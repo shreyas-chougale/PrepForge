@@ -1,3 +1,15 @@
+"""
+PrepForge - AI Mock Interview backend (Flask + PostgreSQL + Google Gemini).
+
+Run:
+    python app.py
+
+Environment variables required:
+    DATABASE_URL          - PostgreSQL connection string
+    GEMINI_API_KEY        - your Google Gemini API key
+Optional:
+    PORT                  - port to bind (default 5000)
+"""
 import json
 import os
 import re
@@ -191,7 +203,7 @@ Return ONLY the JSON array, no other text."""
         ai_text = ai_complete(prompt, max_tokens=2048, response_mime_type="application/json")
     except Exception as e:
         app.logger.exception("AI question generation failed: %s", e)
-        return jsonify({"error": "Failed to generate interview questions via AI."}), 500
+        return jsonify({"error": f"Failed to generate interview questions via AI: {str(e)}"}), 500
 
     questions = safe_json_parse(ai_text, None)
     if not isinstance(questions, list) or len(questions) == 0:
