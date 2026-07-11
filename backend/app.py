@@ -237,7 +237,7 @@ Return ONLY the JSON array, no other text."""
             conn.commit()
     except Exception as e:
         app.logger.exception("DB insert failed: %s", e)
-        return jsonify({"error": f"Failed to create interview session (DB Error): {str(e)}"}), 500
+        return jsonify({"error": "Failed to create interview session"}), 500
 
     return jsonify({
         "id": session_id,
@@ -495,11 +495,7 @@ Return ONLY the JSON object, no other text."""
 
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
-# Initialize DB unconditionally so it works with Gunicorn
-try:
-    init_db()
-except Exception as e:
-    print(f"Warning: Failed to initialize DB on startup: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
+    init_db()
     app.run(host=HOST, port=PORT, debug=False, threaded=True)
