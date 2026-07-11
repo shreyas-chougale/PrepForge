@@ -32,7 +32,7 @@ if not GEMINI_API_KEY:
     sys.exit(1)
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 PORT = int(os.environ.get("PORT", "5000"))
 HOST = os.environ.get("HOST", "0.0.0.0")
@@ -191,18 +191,11 @@ Return ONLY the JSON array, no other text."""
         ai_text = ai_complete(prompt, max_tokens=2048, response_mime_type="application/json")
     except Exception as e:
         app.logger.exception("AI question generation failed: %s", e)
-        ai_text = "[]"
+        return jsonify({"error": "Failed to generate interview questions via AI."}), 500
 
-    fallback_questions = [
-        {"question": f"Tell me about your experience as a {role}.", "category": "Behavioral"},
-        {"question": f"What are the key technical skills for a {role}?", "category": "Technical"},
-        {"question": "Describe a challenging project you worked on.", "category": "Problem Solving"},
-        {"question": "How do you stay updated with industry trends?", "category": "Communication"},
-        {"question": "Where do you see yourself in 5 years?", "category": "Behavioral"},
-    ]
-    questions = safe_json_parse(ai_text, fallback_questions)
+    questions = safe_json_parse(ai_text, None)
     if not isinstance(questions, list) or len(questions) == 0:
-        questions = fallback_questions
+        return jsonify({"error": "AI generated an invalid question format."}), 500
 
     try:
         with get_conn() as conn, conn.cursor() as cur:
