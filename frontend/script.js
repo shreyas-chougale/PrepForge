@@ -32,9 +32,11 @@ function esc(s) {
 
 const api = {
     async createSession(data) {
+        const headers = { "Content-Type": "application/json" };
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
         const r = await fetch(`${API_BASE}/api/interview/sessions`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify(data),
         });
         if (!r.ok) {
@@ -52,9 +54,11 @@ const api = {
         return r.json();
     },
     async submitAnswer(id, data) {
+        const headers = { "Content-Type": "application/json" };
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
         const r = await fetch(`${API_BASE}/api/interview/sessions/${id}/answers`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify(data),
         });
         if (!r.ok) {
@@ -64,9 +68,12 @@ const api = {
         return r.json();
     },
     async completeSession(id) {
+    async completeSession(id) {
+        const headers = { "Content-Type": "application/json" };
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
         const r = await fetch(`${API_BASE}/api/interview/sessions/${id}/complete`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
         });
         if (!r.ok) {
             const errJson = await r.json().catch(() => ({}));
@@ -74,6 +81,106 @@ const api = {
         }
         return r.json();
     },
+    async login(email, password) {
+        const r = await fetch(`${API_BASE}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+        });
+        if (!r.ok) {
+            const errJson = await r.json().catch(() => ({}));
+            throw new Error(errJson.error || "Login failed");
+        }
+        return r.json();
+    },
+    async register(name, email, password) {
+        const r = await fetch(`${API_BASE}/api/auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, email, password }),
+        });
+        if (!r.ok) {
+            const errJson = await r.json().catch(() => ({}));
+            throw new Error(errJson.error || "Registration failed");
+        }
+        return r.json();
+    },
+    async scanATS(formData) {
+        const headers = {};
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
+        const r = await fetch(`${API_BASE}/api/tools/ats-scan`, {
+            method: "POST",
+            headers,
+            body: formData,
+        });
+        if (!r.ok) {
+            const errJson = await r.json().catch(() => ({}));
+            throw new Error(errJson.error || "ATS Scan failed");
+        }
+        return r.json();
+    },
+    async buildResume(formData) {
+        const headers = {};
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
+        const r = await fetch(`${API_BASE}/api/tools/resume-builder`, {
+            method: "POST",
+            headers,
+            body: formData,
+        });
+        if (!r.ok) {
+            const errJson = await r.json().catch(() => ({}));
+            throw new Error(errJson.error || "Resume building failed");
+        }
+        return r.json();
+    },
+    async generateCoverLetter(formData) {
+        const headers = {};
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
+        const r = await fetch(`${API_BASE}/api/tools/cover-letter`, {
+            method: "POST",
+            headers,
+            body: formData,
+        });
+        if (!r.ok) {
+            const errJson = await r.json().catch(() => ({}));
+            throw new Error(errJson.error || "Cover letter generation failed");
+        }
+        return r.json();
+    },
+    async evaluateLeetcode(data) {
+        const headers = { "Content-Type": "application/json" };
+        if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
+        const r = await fetch(`${API_BASE}/api/tools/leetcode`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(data),
+        });
+        if (!r.ok) {
+            const errJson = await r.json().catch(() => ({}));
+            throw new Error(errJson.error || "Evaluation failed");
+        }
+        return r.json();
+    }
+};
+
+// ─── Auth State ───────────────────────────────────────────────────────────
+
+const Auth = {
+    token: localStorage.getItem("prepforge_token"),
+    user: JSON.parse(localStorage.getItem("prepforge_user") || "null"),
+    set(token, user) {
+        this.token = token;
+        this.user = user;
+        localStorage.setItem("prepforge_token", token);
+        localStorage.setItem("prepforge_user", JSON.stringify(user));
+    },
+    logout() {
+        this.token = null;
+        this.user = null;
+        localStorage.removeItem("prepforge_token");
+        localStorage.removeItem("prepforge_user");
+        navigate("#/login");
+    }
 };
 
 
@@ -99,9 +206,13 @@ const Voice = (() => {
         interim: "",
         error: null,
     };
+    let silenceTimer = null;
+    let autoSubmitCallback = null;
+    
     const listeners = new Set();
     function notify() { listeners.forEach((cb) => cb({ ...state })); }
     function on(cb) { listeners.add(cb); return () => listeners.delete(cb); }
+    function setAutoSubmit(cb) { autoSubmitCallback = cb; }
 
     function startListening() {
         if (!supported) {
@@ -120,6 +231,7 @@ const Voice = (() => {
 
         recognition.onstart = () => { state.isListening = true; notify(); };
         recognition.onresult = (e) => {
+            clearTimeout(silenceTimer);
             let final = "", interim = "";
             for (let i = e.resultIndex; i < e.results.length; i++) {
                 const r = e.results[i];
@@ -129,15 +241,28 @@ const Voice = (() => {
             if (final) state.transcript += final;
             state.interim = interim;
             notify();
+            
+            silenceTimer = setTimeout(() => {
+                if (state.isListening && (state.transcript.trim() || state.interim.trim())) {
+                    stopListening();
+                    if (autoSubmitCallback) autoSubmitCallback();
+                }
+            }, 3000);
         };
         recognition.onerror = (e) => {
+            clearTimeout(silenceTimer);
             if (e.error === "not-allowed") state.error = "Microphone access denied. Please allow microphone permissions and try again.";
             else if (e.error === "no-speech") state.error = "No speech detected. Please try speaking again.";
             else if (e.error !== "aborted") state.error = `Voice error: ${e.error}. Please try again.`;
             state.isListening = false;
             notify();
         };
-        recognition.onend = () => { state.isListening = false; state.interim = ""; notify(); };
+        recognition.onend = () => { 
+            clearTimeout(silenceTimer);
+            state.isListening = false; 
+            state.interim = ""; 
+            notify(); 
+        };
         recognition.start();
     }
 
@@ -165,7 +290,7 @@ const Voice = (() => {
     }
     function clearTranscript() { state.transcript = ""; state.interim = ""; notify(); }
 
-    return { supported, state, on, startListening, stopListening, speak, stopSpeaking, clearTranscript };
+    return { supported, state, on, startListening, stopListening, speak, stopSpeaking, clearTranscript, setAutoSubmit };
 })();
 
 
@@ -185,8 +310,14 @@ function route() {
     const h = (location.hash || "#/").slice(1);
     const m1 = h.match(/^\/interview\/(\d+)$/);
     const m2 = h.match(/^\/results\/(\d+)$/);
-    if (m1) renderInterview(parseInt(m1[1], 10));
+    if (h === "/login") renderLogin();
+    else if (h === "/register") renderRegister();
+    else if (m1) renderInterview(parseInt(m1[1], 10));
     else if (m2) renderResults(parseInt(m2[1], 10));
+    else if (h === "/ats") renderATS();
+    else if (h === "/resume") renderResumeBuilder();
+    else if (h === "/cover-letter") renderCoverLetter();
+    else if (h === "/leetcode") renderLeetcode();
     else renderHome();
 }
 
@@ -194,109 +325,586 @@ window.addEventListener("hashchange", route);
 window.addEventListener("DOMContentLoaded", route);
 
 
-// ─── HOME page ────────────────────────────────────────────────────────────
+// ─── AUTH pages ───────────────────────────────────────────────────────────
 
-function renderHome() {
+function renderLogin() {
     app.innerHTML = `
-    <div class="min-h-screen bg-background relative overflow-hidden">
-        <!-- background image -->
-        <div class="absolute inset-0 pointer-events-none" style="z-index:0">
-            <img src="images/hero-bg.png" alt="" class="w-full h-full object-cover opacity-40 mix-blend-multiply">
-            <div class="hero-bg-overlay"></div>
+    <div class="min-h-screen bg-background flex items-center justify-center p-4">
+        <div class="card p-6 sm:p-8 w-full max-w-md">
+            <div class="text-center mb-6">
+                <div class="brand-icon w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4">
+                    ${ICON("hammer", 'class="w-6 h-6 text-white"')}
+                </div>
+                <h2 class="text-2xl font-bold">Welcome Back</h2>
+                <p class="text-sm text-muted-foreground mt-1">Sign in to access your AI Career Dashboard</p>
+            </div>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="text-sm font-semibold text-foreground block mb-1">Email</label>
+                    <input class="input" type="email" name="email" required placeholder="name@example.com">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-foreground block mb-1">Password</label>
+                    <input class="input" type="password" name="password" required placeholder="••••••••">
+                </div>
+                <button type="submit" id="login-submit" class="btn btn-primary w-full">Sign In</button>
+            </form>
+            <p class="text-center text-sm text-muted-foreground mt-6">
+                Don't have an account? <a href="#/register" class="text-primary hover:underline">Sign up</a>
+            </p>
         </div>
+    </div>`;
+    refreshIcons();
 
-        <div class="relative max-w-6xl mx-auto px-4 sm:p-6 pt-8 pb-12" style="z-index:1; padding:2rem 1rem 3rem;">
-            <div class="home-grid">
-                <!-- Hero -->
-                <div class="fade-in">
-                    <div class="flex items-center gap-2.5 mb-5 sm:mb-7">
-                        <div class="brand-icon w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center">
-                            ${ICON("hammer", 'class="w-4 h-4 sm:w-5 sm:h-5 text-white"')}
-                        </div>
-                        <span class="text-xl sm:text-2xl font-display font-extrabold tracking-tight text-foreground">PrepForge</span>
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("login-submit");
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-sm" style="margin-right:.5rem;display:inline-block;vertical-align:middle"></span>Signing in...`;
+        
+        try {
+            const fd = new FormData(e.target);
+            const data = await api.login(fd.get("email"), fd.get("password"));
+            Auth.set(data.token, data.user);
+            navigate("#/");
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = "Sign In";
+            alert(err.message);
+        }
+    });
+}
+
+function renderRegister() {
+    app.innerHTML = `
+    <div class="min-h-screen bg-background flex items-center justify-center p-4">
+        <div class="card p-6 sm:p-8 w-full max-w-md">
+            <div class="text-center mb-6">
+                <div class="brand-icon w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4">
+                    ${ICON("hammer", 'class="w-6 h-6 text-white"')}
+                </div>
+                <h2 class="text-2xl font-bold">Create Account</h2>
+                <p class="text-sm text-muted-foreground mt-1">Start your journey to placement readiness</p>
+            </div>
+            <form id="register-form" class="space-y-4">
+                <div>
+                    <label class="text-sm font-semibold text-foreground block mb-1">Full Name</label>
+                    <input class="input" type="text" name="name" required placeholder="Jane Doe">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-foreground block mb-1">Email</label>
+                    <input class="input" type="email" name="email" required placeholder="name@example.com">
+                </div>
+                <div>
+                    <label class="text-sm font-semibold text-foreground block mb-1">Password</label>
+                    <input class="input" type="password" name="password" required minlength="6" placeholder="Min 6 characters">
+                </div>
+                <button type="submit" id="register-submit" class="btn btn-primary w-full">Create Account</button>
+            </form>
+            <p class="text-center text-sm text-muted-foreground mt-6">
+                Already have an account? <a href="#/login" class="text-primary hover:underline">Sign in</a>
+            </p>
+        </div>
+    </div>`;
+    refreshIcons();
+
+    document.getElementById("register-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById("register-submit");
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-sm" style="margin-right:.5rem;display:inline-block;vertical-align:middle"></span>Creating...`;
+        
+        try {
+            const fd = new FormData(e.target);
+            const data = await api.register(fd.get("name"), fd.get("email"), fd.get("password"));
+            Auth.set(data.token, data.user);
+            navigate("#/");
+        } catch (err) {
+            btn.disabled = false;
+            btn.textContent = "Create Account";
+            alert(err.message);
+        }
+    });
+}
+
+function renderATS() {
+    if (!Auth.user) { navigate("#/login"); return; }
+    const content = `
+    <div class="max-w-4xl mx-auto">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-primary-10 p-3 rounded-xl shrink-0">
+                ${ICON("file", 'class="w-6 h-6 text-primary"')}
+            </div>
+            <div>
+                <h2 class="text-xl sm:text-2xl font-bold">ATS Scanner & LinkedIn Optimizer</h2>
+                <p class="text-xs sm:text-sm text-muted-foreground">See how your resume performs against a job description.</p>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card p-6 bg-card">
+                <form id="ats-form" class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold block">Upload Resume (PDF)</label>
+                        <input type="file" name="resume" accept=".pdf" required class="input py-2 cursor-pointer" style="line-height:1.2;">
                     </div>
-
-                    <div class="inline-flex items-center gap-2 px-3 sm:px-3 py-1.5 rounded-full bg-primary-10 text-primary font-semibold text-xs sm:text-sm mb-4" style="margin-bottom:1.5rem;">
-                        ${ICON("sparkles", 'class="w-4 h-4 shrink-0"')}
-                        <span class="truncate">AI-Powered Interview Preparation Platform</span>
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold block">Job Description</label>
+                        <textarea name="job_description" required rows="6" class="textarea" placeholder="Paste the job description here..."></textarea>
                     </div>
+                    <button type="submit" id="ats-submit" class="btn btn-primary w-full">
+                        <span id="ats-submit-label">Scan Resume</span>
+                    </button>
+                </form>
+            </div>
+            
+            <div class="card p-6 bg-card" id="ats-results" style="display:none;">
+                <!-- Results will be injected here -->
+            </div>
+        </div>
+    </div>`;
+    renderDashboardLayout(content, "ats");
 
-                    <h1 class="text-3xl sm:text-5xl lg:text-6xl font-display font-extrabold text-foreground mb-4" style="margin-bottom:1.5rem;">
-                        Master your next <span class="gradient-text">tech interview.</span>
-                    </h1>
+    document.getElementById("ats-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const btn = document.getElementById("ats-submit");
+        const label = document.getElementById("ats-submit-label");
+        const resultsDiv = document.getElementById("ats-results");
+        
+        btn.disabled = true;
+        label.innerHTML = `<span class="spinner-sm" style="margin-right:.5rem;display:inline-block;vertical-align:middle"></span>Analyzing with AI...`;
+        
+        try {
+            const formData = new FormData(form);
+            const res = await api.scanATS(formData);
+            
+            // Render results
+            let scoreColor = "text-success";
+            if (res.matchScore < 70) scoreColor = "text-warning";
+            if (res.matchScore < 40) scoreColor = "text-destructive";
 
-                    <p class="text-base sm:text-lg text-muted-foreground mb-6 leading-relaxed max-w-lg" style="margin-bottom:2rem;">
-                        Practice with our advanced AI that tailors questions to your exact role and experience level. Get real-time feedback, scoring, and actionable advice to improve.
-                    </p>
+            const mkHTML = (res.missingKeywords || []).map(k => `<span class="badge" style="background:hsl(var(--destructive)/0.1); color:hsl(var(--destructive));">${esc(k)}</span>`).join("");
+            const tkHTML = (res.matchingKeywords || []).map(k => `<span class="badge" style="background:hsl(var(--success)/0.1); color:hsl(var(--success));">${esc(k)}</span>`).join("");
 
-                    <div class="feature-grid">
-                        <div class="flex items-start gap-3">
-                            <div class="bg-primary-10 w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
-                                ${ICON("target", 'class="w-5 h-5 text-primary"')}
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-foreground text-sm sm:text-base">Tailored Questions</h3>
-                                <p class="text-xs sm:text-sm text-muted-foreground" style="margin-top:0.125rem;">Generated dynamically for your specific role.</p>
-                            </div>
-                        </div>
-                        <div class="flex items-start gap-3">
-                            <div class="bg-secondary-10 w-10 h-10 rounded-lg flex items-center justify-center shrink-0">
-                                ${ICON("brain-circuit", 'class="w-5 h-5 text-secondary"')}
-                            </div>
-                            <div>
-                                <h3 class="font-semibold text-foreground text-sm sm:text-base">Instant Feedback</h3>
-                                <p class="text-xs sm:text-sm text-muted-foreground" style="margin-top:0.125rem;">AI evaluates your answers with detailed scoring.</p>
-                            </div>
-                        </div>
+            resultsDiv.innerHTML = `
+                <div class="text-center mb-6">
+                    <div class="text-5xl font-black ${scoreColor}">${res.matchScore}%</div>
+                    <div class="text-sm font-semibold text-muted-foreground mt-1">ATS Match Score</div>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <h4 class="text-sm font-bold flex items-center gap-2 mb-2">${ICON("check", "w-4 h-4 text-success")} Matching Keywords</h4>
+                        <div class="flex flex-wrap gap-2">${tkHTML || "<span class='text-xs text-muted-foreground'>None found</span>"}</div>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-bold flex items-center gap-2 mb-2">${ICON("x", "w-4 h-4 text-destructive")} Missing Keywords</h4>
+                        <div class="flex flex-wrap gap-2">${mkHTML || "<span class='text-xs text-muted-foreground'>None missing!</span>"}</div>
+                    </div>
+                    <div class="p-3 bg-muted rounded-lg border border-border">
+                        <h4 class="text-sm font-bold mb-1">Formatting Feedback</h4>
+                        <p class="text-sm text-muted-foreground">${esc(res.formattingFeedback)}</p>
+                    </div>
+                    <div class="p-3 bg-primary-10 rounded-lg border border-primary-10">
+                        <h4 class="text-sm font-bold text-primary mb-1">LinkedIn Optimization</h4>
+                        <p class="text-sm text-foreground">${esc(res.linkedinOptimization)}</p>
                     </div>
                 </div>
+            `;
+            resultsDiv.style.display = "block";
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            btn.disabled = false;
+            label.textContent = "Scan Resume";
+        }
+    });
+}
 
-                <!-- Form card -->
-                <div class="fade-in">
-                    <div class="card p-6 sm:p-8 bg-card-90 backdrop-blur">
-                        <div class="flex items-center gap-3 mb-6" style="margin-bottom:2rem;">
-                            <div class="bg-primary-10 p-3 rounded-xl shrink-0">
-                                ${ICON("briefcase", 'class="w-6 h-6 text-primary"')}
-                            </div>
-                            <div>
-                                <h2 class="text-xl sm:text-2xl font-bold">Start Your Session</h2>
-                                <p class="text-xs sm:text-sm text-muted-foreground">Setup your profile to begin</p>
-                            </div>
-                        </div>
+function renderResumeBuilder() {
+    if (!Auth.user) { navigate("#/login"); return; }
+    const content = `
+    <div class="max-w-4xl mx-auto">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-primary-10 p-3 rounded-xl shrink-0">
+                ${ICON("user", 'class="w-6 h-6 text-primary"')}
+            </div>
+            <div>
+                <h2 class="text-xl sm:text-2xl font-bold">Overleaf Resume Builder</h2>
+                <p class="text-xs sm:text-sm text-muted-foreground">Generate an ATS-beating Jake's Resume formatted in LaTeX.</p>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card p-6 bg-card">
+                <form id="resume-form" class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold block">Upload Current Resume (PDF)</label>
+                        <input type="file" name="resume" accept=".pdf" required class="input py-2 cursor-pointer" style="line-height:1.2;">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold block">Target Job Description</label>
+                        <textarea name="job_description" required rows="6" class="textarea" placeholder="Paste the exact JD to tailor the resume..."></textarea>
+                    </div>
+                    <button type="submit" id="resume-submit" class="btn btn-primary w-full">
+                        <span id="resume-submit-label">Generate Jake's Resume LaTeX</span>
+                    </button>
+                    <p class="text-xs text-muted-foreground text-center">This takes ~15-20 seconds. It rewrites your resume using strong metrics.</p>
+                </form>
+            </div>
+            
+            <div class="card p-6 bg-card flex flex-col" id="resume-results" style="display:none; max-height: 600px;">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Raw LaTeX Code</h3>
+                    <button type="button" id="copy-latex-btn" class="btn btn-sm btn-outline">Copy to Clipboard</button>
+                </div>
+                <div class="flex-1 overflow-hidden rounded-lg border border-border">
+                    <textarea id="latex-output" class="w-full h-full p-4 font-mono text-xs bg-muted text-foreground resize-none" readonly style="min-height:300px;"></textarea>
+                </div>
+                <div class="mt-4 text-center">
+                    <a href="https://www.overleaf.com/project" target="_blank" class="text-sm text-primary hover:underline">Open Overleaf to compile this code</a>
+                </div>
+            </div>
+        </div>
+    </div>`;
+    renderDashboardLayout(content, "resume");
 
-                        <form id="home-form" class="space-y-5">
-                            <div class="space-y-2">
-                                <label class="text-sm font-semibold text-foreground block">Full Name</label>
-                                <input class="input" name="name" required placeholder="e.g. Jane Doe">
-                            </div>
-                            <div class="space-y-2">
-                                <label class="text-sm font-semibold text-foreground block">Target Role</label>
-                                <input class="input" name="role" required placeholder="e.g. Senior React Developer">
-                            </div>
-                            <div class="space-y-2">
-                                <label class="text-sm font-semibold text-foreground block">Experience Level</label>
-                                <div class="select-wrapper">
-                                    <select class="select" name="experienceLevel">
-                                        <option value="junior">Junior (0-2 years)</option>
-                                        <option value="mid" selected>Mid-Level (2-5 years)</option>
-                                        <option value="senior">Senior (5-8 years)</option>
-                                        <option value="lead">Lead/Principal (8+ years)</option>
-                                    </select>
-                                    <svg class="chev" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                                </div>
-                            </div>
-                            <button type="submit" id="home-submit" class="btn btn-primary btn-lg w-full" style="margin-top:0.5rem;">
-                                <span id="home-submit-label">Start Interview</span>
-                            </button>
-                            <p class="text-center text-xs text-muted-foreground">Questions take about 5-10 seconds to generate.</p>
-                        </form>
+    document.getElementById("resume-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const btn = document.getElementById("resume-submit");
+        const label = document.getElementById("resume-submit-label");
+        const resultsDiv = document.getElementById("resume-results");
+        const latexOutput = document.getElementById("latex-output");
+        
+        btn.disabled = true;
+        label.innerHTML = `<span class="spinner-sm" style="margin-right:.5rem;display:inline-block;vertical-align:middle"></span>Writing Resume...`;
+        
+        try {
+            const formData = new FormData(form);
+            const res = await api.buildResume(formData);
+            
+            latexOutput.value = res.latex;
+            resultsDiv.style.display = "flex";
+            
+            document.getElementById("copy-latex-btn").onclick = () => {
+                navigator.clipboard.writeText(res.latex);
+                const copyBtn = document.getElementById("copy-latex-btn");
+                copyBtn.textContent = "Copied!";
+                setTimeout(() => copyBtn.textContent = "Copy to Clipboard", 2000);
+            };
+
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            btn.disabled = false;
+            label.textContent = "Generate Jake's Resume LaTeX";
+        }
+    });
+}
+
+function renderCoverLetter() {
+    if (!Auth.user) { navigate("#/login"); return; }
+    const content = `
+    <div class="max-w-4xl mx-auto">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-primary-10 p-3 rounded-xl shrink-0">
+                ${ICON("file", 'class="w-6 h-6 text-primary"')}
+            </div>
+            <div>
+                <h2 class="text-xl sm:text-2xl font-bold">AI Cover Letter Generator</h2>
+                <p class="text-xs sm:text-sm text-muted-foreground">Generate tailored cover letters based on the Job Description.</p>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="card p-6 bg-card">
+                <form id="cl-form" class="space-y-4">
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold block">Upload Resume (PDF)</label>
+                        <input type="file" name="resume" accept=".pdf" required class="input py-2 cursor-pointer" style="line-height:1.2;">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold block">Target Job Description</label>
+                        <textarea name="job_description" required rows="6" class="textarea" placeholder="Paste the JD here..."></textarea>
+                    </div>
+                    <button type="submit" id="cl-submit" class="btn btn-primary w-full">
+                        <span id="cl-submit-label">Generate Cover Letter</span>
+                    </button>
+                </form>
+            </div>
+            
+            <div class="card p-6 bg-card flex flex-col" id="cl-results" style="display:none; max-height: 600px;">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold">Your Cover Letter</h3>
+                    <button type="button" id="copy-cl-btn" class="btn btn-sm btn-outline">Copy</button>
+                </div>
+                <div class="flex-1 overflow-hidden rounded-lg border border-border">
+                    <textarea id="cl-output" class="w-full h-full p-4 font-sans text-sm bg-muted text-foreground resize-none" readonly style="min-height:300px;"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>`;
+    renderDashboardLayout(content, "cover-letter");
+
+    document.getElementById("cl-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const btn = document.getElementById("cl-submit");
+        const label = document.getElementById("cl-submit-label");
+        const resultsDiv = document.getElementById("cl-results");
+        const clOutput = document.getElementById("cl-output");
+        
+        btn.disabled = true;
+        label.innerHTML = `<span class="spinner-sm" style="margin-right:.5rem;display:inline-block;vertical-align:middle"></span>Writing...`;
+        
+        try {
+            const formData = new FormData(form);
+            const res = await api.generateCoverLetter(formData);
+            
+            clOutput.value = res.coverLetter;
+            resultsDiv.style.display = "flex";
+            
+            document.getElementById("copy-cl-btn").onclick = () => {
+                navigator.clipboard.writeText(res.coverLetter);
+                const copyBtn = document.getElementById("copy-cl-btn");
+                copyBtn.textContent = "Copied!";
+                setTimeout(() => copyBtn.textContent = "Copy", 2000);
+            };
+            resultsDiv.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            btn.disabled = false;
+            label.textContent = "Generate Cover Letter";
+        }
+    });
+}
+
+function renderLeetcode() {
+    if (!Auth.user) { navigate("#/login"); return; }
+    const content = `
+    <div class="max-w-6xl mx-auto h-full flex flex-col">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-primary-10 p-3 rounded-xl shrink-0">
+                ${ICON("code", 'class="w-6 h-6 text-primary"')}
+            </div>
+            <div>
+                <h2 class="text-xl sm:text-2xl font-bold">LeetCode Interview Assistant</h2>
+                <p class="text-xs sm:text-sm text-muted-foreground">Practice with an AI interviewer who gives hints instead of answers.</p>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
+            <div class="card p-6 bg-card flex flex-col h-[600px] overflow-hidden">
+                <form id="lc-form" class="space-y-4 flex flex-col h-full">
+                    <div class="space-y-2 flex-1 flex flex-col min-h-0">
+                        <label class="text-sm font-semibold block">Problem Description</label>
+                        <textarea name="problem" required class="textarea flex-1" placeholder="Paste LeetCode problem here..."></textarea>
+                    </div>
+                    <div class="space-y-2 flex-1 flex flex-col min-h-0">
+                        <label class="text-sm font-semibold block">Your Code</label>
+                        <textarea name="code" required class="textarea font-mono text-sm flex-1" placeholder="Paste your code here..."></textarea>
+                    </div>
+                    <div class="space-y-2 shrink-0">
+                        <label class="text-sm font-semibold block">Language</label>
+                        <input name="language" required class="input" value="Python">
+                    </div>
+                    <button type="submit" id="lc-submit" class="btn btn-primary w-full shrink-0">
+                        <span id="lc-submit-label">Ask Interviewer</span>
+                    </button>
+                </form>
+            </div>
+            
+            <div class="card p-6 bg-card flex flex-col h-[600px] overflow-y-auto" id="lc-results" style="display:none;">
+                <h3 class="font-bold text-xl mb-6">Interviewer Feedback</h3>
+                <div class="space-y-6">
+                    <div class="p-4 bg-muted rounded-xl">
+                        <h4 class="text-sm font-bold mb-2 flex items-center gap-2">${ICON("zap", "w-4 h-4 text-primary")} Complexity Analysis</h4>
+                        <p class="text-sm font-mono text-foreground" id="lc-complexity"></p>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-bold mb-2 flex items-center gap-2">${ICON("target", "w-4 h-4 text-secondary")} Code Review</h4>
+                        <p class="text-sm text-foreground leading-relaxed" id="lc-feedback"></p>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-bold mb-2 flex items-center gap-2">${ICON("x", "w-4 h-4 text-destructive")} Missing Edge Cases</h4>
+                        <ul class="list-disc pl-5 text-sm text-foreground space-y-1" id="lc-edges"></ul>
+                    </div>
+                    <div class="p-4 bg-primary-10 rounded-xl border border-primary-10">
+                        <h4 class="text-sm font-bold text-primary mb-2 flex items-center gap-2">${ICON("sparkles", "w-4 h-4")} Progressive Hint</h4>
+                        <p class="text-sm text-foreground" id="lc-hint"></p>
                     </div>
                 </div>
             </div>
         </div>
     </div>`;
+    renderDashboardLayout(content, "leetcode");
 
+    document.getElementById("lc-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const btn = document.getElementById("lc-submit");
+        const label = document.getElementById("lc-submit-label");
+        const resultsDiv = document.getElementById("lc-results");
+        
+        btn.disabled = true;
+        label.innerHTML = `<span class="spinner-sm" style="margin-right:.5rem;display:inline-block;vertical-align:middle"></span>Analyzing...`;
+        
+        try {
+            const fd = new FormData(form);
+            const res = await api.evaluateLeetcode({
+                problem: fd.get("problem"),
+                code: fd.get("code"),
+                language: fd.get("language")
+            });
+            
+            document.getElementById("lc-complexity").textContent = res.complexity;
+            document.getElementById("lc-feedback").textContent = res.feedback;
+            document.getElementById("lc-hint").textContent = res.hint;
+            
+            const edgesUl = document.getElementById("lc-edges");
+            edgesUl.innerHTML = (res.edgeCases || []).map(e => `<li>${esc(e)}</li>`).join("");
+            
+            resultsDiv.style.display = "flex";
+            if (window.innerWidth < 1024) {
+                resultsDiv.scrollIntoView({ behavior: 'smooth' });
+            }
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            btn.disabled = false;
+            label.textContent = "Ask Interviewer";
+        }
+    });
+}
+
+// ─── DASHBOARD LAYOUT ─────────────────────────────────────────────────────
+
+function renderDashboardLayout(contentHTML, activeId) {
+    const navItems = [
+        { id: "home", href: "#/", icon: "briefcase", label: "Mock Interview" },
+        { id: "ats", href: "#/ats", icon: "file", label: "ATS Scanner" },
+        { id: "resume", href: "#/resume", icon: "user", label: "Resume Builder" },
+        { id: "cover-letter", href: "#/cover-letter", icon: "file", label: "Cover Letter" },
+        { id: "leetcode", href: "#/leetcode", icon: "code", label: "LeetCode Assistant" },
+    ];
+
+    const navHTML = navItems.map(item => `
+        <a href="${item.href}" class="nav-item ${activeId === item.id ? 'active' : ''}">
+            ${ICON(item.icon, 'class="w-5 h-5"')}
+            ${item.label}
+        </a>
+    `).join("");
+
+    app.innerHTML = `
+    <div class="dashboard-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="brand-icon w-10 h-10 rounded-lg flex items-center justify-center">
+                    ${ICON("hammer", 'class="w-5 h-5 text-white"')}
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">PrepForge</h1>
+            </div>
+            
+            <nav class="sidebar-nav">
+                ${navHTML}
+            </nav>
+            
+            <div class="mt-auto pt-4 border-t border-border">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-full bg-primary-10 text-primary flex items-center justify-center font-bold">
+                        ${esc(Auth.user.name.charAt(0).toUpperCase())}
+                    </div>
+                    <div class="overflow-hidden">
+                        <p class="text-sm font-bold truncate">${esc(Auth.user.name)}</p>
+                        <p class="text-xs text-muted-foreground truncate">${esc(Auth.user.email)}</p>
+                    </div>
+                </div>
+                <button onclick="Auth.logout()" class="btn btn-outline w-full btn-sm">
+                    Log out
+                </button>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Mobile Header -->
+            <header class="sm:hidden p-4 border-b border-border bg-background flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="brand-icon w-8 h-8 rounded-lg flex items-center justify-center">
+                        ${ICON("hammer", 'class="w-4 h-4 text-white"')}
+                    </div>
+                    <h1 class="text-lg font-bold">PrepForge</h1>
+                </div>
+                <button onclick="document.getElementById('sidebar').classList.toggle('open')" class="btn btn-sm">
+                    ☰
+                </button>
+            </header>
+            
+            <div class="p-4 sm:p-8 flex-1">
+                ${contentHTML}
+            </div>
+        </main>
+    </div>`;
     refreshIcons();
+}
+
+// ─── HOME page ────────────────────────────────────────────────────────────
+
+function renderHome() {
+    if (!Auth.user) {
+        navigate("#/login");
+        return;
+    }
+
+    const content = `
+    <div class="max-w-3xl">
+        <!-- Form card -->
+        <div class="fade-in">
+            <div class="card p-6 sm:p-8 bg-card">
+                <div class="flex items-center gap-3 mb-6" style="margin-bottom:2rem;">
+                    <div class="bg-primary-10 p-3 rounded-xl shrink-0">
+                        ${ICON("briefcase", 'class="w-6 h-6 text-primary"')}
+                    </div>
+                    <div>
+                        <h2 class="text-xl sm:text-2xl font-bold">Start Mock Interview</h2>
+                        <p class="text-xs sm:text-sm text-muted-foreground">Practice real-world scenarios</p>
+                    </div>
+                </div>
+
+                <form id="home-form" class="space-y-5">
+                    <input type="hidden" name="name" value="${esc(Auth.user.name)}">
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold text-foreground block">Target Role</label>
+                        <input class="input" name="role" required placeholder="e.g. Senior React Developer">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="text-sm font-semibold text-foreground block">Experience Level</label>
+                        <div class="select-wrapper">
+                            <select class="select" name="experienceLevel">
+                                <option value="junior">Junior (0-2 years)</option>
+                                <option value="mid" selected>Mid-level (3-5 years)</option>
+                                <option value="senior">Senior (5-8 years)</option>
+                                <option value="lead">Lead / Principal (8+ years)</option>
+                            </select>
+                            <svg class="chev" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                    </div>
+                    <button type="submit" id="home-submit" class="btn btn-primary btn-lg w-full" style="margin-top:0.5rem;">
+                        <span id="home-submit-label">Start Interview</span>
+                    </button>
+                    <p class="text-center text-xs text-muted-foreground">Questions take about 5-10 seconds to generate.</p>
+                </form>
+            </div>
+        </div>
+    </div>`;
+
+    renderDashboardLayout(content, "home");
 
     const form = document.getElementById("home-form");
     form.addEventListener("submit", async (e) => {
@@ -456,26 +1064,20 @@ function renderInterviewShell() {
         <div class="chat-input-bar">
             <div class="max-w-3xl space-y-3">
                 <div id="voice-error" class="hidden flex items-start gap-2 text-xs text-destructive p-3 rounded-xl border" style="background:hsl(var(--destructive)/0.1);border-color:hsl(var(--destructive)/0.2)"></div>
-                <div id="recording-indicator" class="hidden flex items-center gap-2 text-xs text-destructive">
+                <div id="recording-indicator" class="hidden flex items-center justify-center gap-2 text-xs text-destructive mb-2">
                     <span class="dot-pulse"></span>
-                    <span class="shrink-0">Recording...</span>
-                    <span id="interim-text" class="text-muted-foreground italic truncate"></span>
+                    <span class="shrink-0 font-bold">Recording...</span>
+                    <span id="interim-text" class="text-muted-foreground italic truncate max-w-sm"></span>
                 </div>
-                <div id="input-row" class="input-row">
-                    <textarea id="text-input" placeholder="Press the mic to speak your answer..." rows="3" readonly></textarea>
-                    <div class="flex flex-col gap-2 shrink-0">
-                        <button id="mic-btn" class="icon-btn" title="Record answer with microphone" type="button" ${Voice.supported ? "" : "style=\"display:none\""}>
-                            ${ICON("mic", 'class="w-4 h-4"')}
-                        </button>
-                        <button id="send-btn" class="icon-btn primary" title="Submit answer" type="button" style="display:none">
-                            ${ICON("send", 'class="w-4 h-4"')}
-                        </button>
-                    </div>
+                <div id="input-row" class="flex justify-center">
+                    <button id="mic-btn" class="icon-btn w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105" style="background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); ${Voice.supported ? "" : "display:none"}" title="Click to speak your answer" type="button">
+                        ${ICON("mic", 'class="w-8 h-8"')}
+                    </button>
                 </div>
-                <p class="text-xs text-center text-muted-foreground" style="opacity:.6">${
+                <p class="text-xs text-center text-muted-foreground mt-2" style="opacity:.8">${
                     Voice.supported
-                        ? `<span class="sm:hidden">Mic to speak</span><span class="sm:inline">Press mic to speak · Stops and submits automatically when you finish</span>`
-                        : "Voice input is not supported in this browser."
+                        ? `<span class="font-semibold">Click the mic to speak your answer.</span><br/>It will automatically submit when you stop speaking for 3 seconds.`
+                        : "Voice input is not supported in this browser. Please use Chrome or Edge."
                 }</p>
             </div>
         </div>
@@ -489,26 +1091,17 @@ function renderInterviewShell() {
 }
 
 function bindInterviewEvents() {
-    const ta = document.getElementById("text-input");
-    const sendBtn = document.getElementById("send-btn");
     const micBtn = document.getElementById("mic-btn");
 
-    ta.addEventListener("input", () => {
-        if (Voice.state.isListening) return;
-        interviewState.textInput = ta.value;
-        sendBtn.disabled = !canSubmitAnswer();
-        updateInputRowState();
-    });
-    ta.addEventListener("keydown", (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-            e.preventDefault();
+    Voice.setAutoSubmit(() => {
+        if (canSubmitAnswer()) {
             handleSubmitAnswer();
         }
     });
-    sendBtn.addEventListener("click", handleSubmitAnswer);
+
     micBtn?.addEventListener("click", () => {
         if (Voice.state.isListening) Voice.stopListening();
-        else { Voice.clearTranscript(); interviewState.textInput = ""; ta.value = ""; Voice.startListening(); }
+        else { Voice.clearTranscript(); interviewState.textInput = ""; Voice.startListening(); }
     });
 }
 
@@ -521,40 +1114,38 @@ function canSubmitAnswer() {
 function updateInputRowState() {
     const last = interviewState.messages[interviewState.messages.length - 1];
     const awaiting = last && last.role === "ai" && last.kind === "question";
-    const row = document.getElementById("input-row");
-    if (!row) return;
-    row.classList.toggle("active", awaiting && !interviewState.isSubmitting);
-    row.classList.toggle("disabled", interviewState.isSubmitting || !awaiting);
-    const ta = document.getElementById("text-input");
-    if (ta) {
-        ta.disabled = interviewState.isSubmitting || !awaiting;
-        ta.placeholder = !awaiting ? "Waiting for evaluation..."
-            : Voice.state.isListening ? "Listening... (speak your answer)"
-            : "Press the mic to speak your answer...";
-    }
     const mic = document.getElementById("mic-btn");
-    if (mic) mic.disabled = interviewState.isSubmitting || !awaiting;
+    if (mic) {
+        mic.disabled = interviewState.isSubmitting || !awaiting;
+        if (mic.disabled) {
+            mic.style.opacity = "0.5";
+            mic.style.cursor = "not-allowed";
+        } else {
+            mic.style.opacity = "1";
+            mic.style.cursor = "pointer";
+        }
+    }
 }
 
 function updateInterviewVoiceUI() {
-    // Sync transcript into textarea while listening
+    // Sync transcript into state while listening
     if (Voice.state.isListening) {
         const combined = Voice.state.transcript + Voice.state.interim;
         interviewState.textInput = combined;
-        const ta = document.getElementById("text-input");
-        if (ta) ta.value = combined;
-        const sendBtn = document.getElementById("send-btn");
-        if (sendBtn) sendBtn.disabled = !canSubmitAnswer();
-    } else if (interviewState.textInput.trim() && canSubmitAnswer() && !interviewState.isSubmitting) {
-        // Auto submit when microphone stops
-        setTimeout(handleSubmitAnswer, 100);
     }
 
     // Mic button visual
     const mic = document.getElementById("mic-btn");
     if (mic) {
-        mic.classList.toggle("recording", Voice.state.isListening);
-        mic.innerHTML = Voice.state.isListening ? ICON("mic-off", 'class="w-4 h-4"') : ICON("mic", 'class="w-4 h-4"');
+        if (Voice.state.isListening) {
+            mic.style.background = "hsl(var(--destructive))";
+            mic.innerHTML = ICON("mic-off", 'class="w-8 h-8 text-white"');
+            mic.classList.add("recording-pulse");
+        } else {
+            mic.style.background = "hsl(var(--primary))";
+            mic.innerHTML = ICON("mic", 'class="w-8 h-8 text-white"');
+            mic.classList.remove("recording-pulse");
+        }
         refreshIcons();
     }
 
