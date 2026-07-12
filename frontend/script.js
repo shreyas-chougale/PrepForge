@@ -467,14 +467,14 @@ function renderInterviewShell() {
                         <button id="mic-btn" class="icon-btn" title="Record answer with microphone" type="button" ${Voice.supported ? "" : "style=\"display:none\""}>
                             ${ICON("mic", 'class="w-4 h-4"')}
                         </button>
-                        <button id="send-btn" class="icon-btn primary" title="Submit answer (Ctrl+Enter)" type="button" disabled>
+                        <button id="send-btn" class="icon-btn primary" title="Submit answer" type="button" style="display:none">
                             ${ICON("send", 'class="w-4 h-4"')}
                         </button>
                     </div>
                 </div>
                 <p class="text-xs text-center text-muted-foreground" style="opacity:.6">${
                     Voice.supported
-                        ? `<span class="sm:hidden">Mic to speak · ⌘↵ submit</span><span class="sm:inline">Press mic to speak · Ctrl+Enter to submit · Questions are read aloud automatically</span>`
+                        ? `<span class="sm:hidden">Mic to speak</span><span class="sm:inline">Press mic to speak · Stops and submits automatically when you finish</span>`
                         : "Voice input is not supported in this browser."
                 }</p>
             </div>
@@ -545,6 +545,9 @@ function updateInterviewVoiceUI() {
         if (ta) ta.value = combined;
         const sendBtn = document.getElementById("send-btn");
         if (sendBtn) sendBtn.disabled = !canSubmitAnswer();
+    } else if (interviewState.textInput.trim() && canSubmitAnswer() && !interviewState.isSubmitting) {
+        // Auto submit when microphone stops
+        setTimeout(handleSubmitAnswer, 100);
     }
 
     // Mic button visual
