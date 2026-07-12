@@ -363,7 +363,7 @@ Return ONLY the JSON object, no other text."""
 
         fallback = {
             "score": 5,
-            "feedback": "Your answer shows some understanding. Consider providing more specific examples and technical details.",
+            "feedback": "(API Fallback) We couldn't evaluate your answer due to high API usage or a network error. Please try again or provide a longer answer.",
             "improvedAnswer": f"A strong answer would include specific examples from your experience, demonstrate technical depth appropriate for a {experience_level} {role}, and clearly articulate your thought process.",
         }
         evaluation = safe_json_parse(ai_text, fallback)
