@@ -355,7 +355,8 @@ Evaluate this answer and return a JSON object with exactly these fields:
 Return ONLY the JSON object, no other text."""
 
         try:
-            ai_text = ai_complete(eval_prompt, max_tokens=1024, response_mime_type="application/json")
+            # Remove response_mime_type because safe_json_parse handles markdown fences and strict mode causes 400 errors
+            ai_text = ai_complete(eval_prompt, max_tokens=1024)
         except Exception as e:
             app.logger.exception("AI evaluation failed: %s", e)
             ai_text = "{}"
@@ -367,10 +368,15 @@ Return ONLY the JSON object, no other text."""
         }
         evaluation = safe_json_parse(ai_text, fallback)
 
-        # Sanitize score
+        # Sanitize score robustly in case AI outputs "8/10" instead of 8
         try:
-            score = int(round(float(evaluation.get("score", 5))))
-        except (TypeError, ValueError):
+            raw_score = str(evaluation.get("score", "5"))
+            match = re.search(r'(\d+)', raw_score)
+            if match:
+                score = int(match.group(1))
+            else:
+                score = 5
+        except Exception:
             score = 5
         score = max(0, min(10, score))
 
@@ -457,7 +463,7 @@ Return a JSON object with exactly these fields:
 Return ONLY the JSON object, no other text."""
 
         try:
-            ai_text = ai_complete(summary_prompt, max_tokens=512, response_mime_type="application/json")
+            ai_text = ai_complete(summary_prompt, max_tokens=512)
         except Exception as e:
             app.logger.exception("AI summary failed: %s", e)
             ai_text = "{}"
