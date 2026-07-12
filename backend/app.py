@@ -14,11 +14,16 @@ import json
 import os
 import re
 import sys
-
 import psycopg
+import jwt
+from datetime import datetime, timedelta
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import google.generativeai as genai
+import pypdf
+import io
 
 try:
     from dotenv import load_dotenv
@@ -48,6 +53,7 @@ gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 PORT = int(os.environ.get("PORT", "5000"))
 HOST = os.environ.get("HOST", "0.0.0.0")
+JWT_SECRET = os.environ.get("JWT_SECRET", "prepforge-super-secret-key-123")
 
 # Frontend lives one level up from backend/
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
@@ -70,8 +76,17 @@ def init_db():
         CREATE TYPE session_status AS ENUM ('in_progress', 'completed');
     EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS interview_sessions (
         id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         name TEXT NOT NULL,
         role TEXT NOT NULL,
         experience_level experience_level NOT NULL,
@@ -105,8 +120,14 @@ def init_db():
 
 # ─── Gemini helpers ──────────────────────────────────────────────────────────
 
+@tenacity.retry(
+    wait=tenacity.wait_exponential(multiplier=1, min=2, max=10),
+    stop=tenacity.stop_after_attempt(3),
+    retry=tenacity.retry_if_exception_type(Exception),
+    reraise=True
+)
 def ai_complete(prompt: str, max_tokens: int = 1024, response_mime_type: str = None) -> str:
-    """Call Gemini API and return raw text."""
+    """Call Gemini API and return raw text. Retries on failure."""
     try:
         config = {
             "max_output_tokens": max_tokens,
@@ -153,6 +174,102 @@ app = Flask(__name__, static_folder=None)
 CORS(app)
 
 
+# ─── Authentication ──────────────────────────────────────────────────────────
+
+def require_auth(optional=False):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            auth_header = request.headers.get("Authorization")
+            if not auth_header or not auth_header.startswith("Bearer "):
+                if optional:
+                    request.user = None
+                    return f(*args, **kwargs)
+                return jsonify({"error": "Missing or invalid token"}), 401
+            token = auth_header.split(" ")[1]
+            try:
+                payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+                request.user = {"id": payload["user_id"], "email": payload["email"], "name": payload.get("name", "")}
+            except jwt.ExpiredSignatureError:
+                if optional:
+                    request.user = None
+                    return f(*args, **kwargs)
+                return jsonify({"error": "Token expired"}), 401
+            except jwt.InvalidTokenError:
+                if optional:
+                    request.user = None
+                    return f(*args, **kwargs)
+                return jsonify({"error": "Invalid token"}), 401
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+
+    if not name or not email or len(password) < 6:
+        return jsonify({"error": "Name, valid email, and a password (min 6 chars) are required."}), 400
+
+    password_hash = generate_password_hash(password)
+
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s", (email,))
+            if cur.fetchone():
+                return jsonify({"error": "Email already exists"}), 409
+
+            cur.execute(
+                "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) RETURNING id",
+                (name, email, password_hash)
+            )
+            user_id = cur.fetchone()[0]
+            conn.commit()
+
+        token = jwt.encode(
+            {"user_id": user_id, "email": email, "name": name, "exp": datetime.utcnow() + timedelta(days=7)},
+            JWT_SECRET, algorithm="HS256"
+        )
+        return jsonify({"token": token, "user": {"id": user_id, "name": name, "email": email}}), 201
+    except Exception as e:
+        app.logger.exception("Registration error: %s", e)
+        return jsonify({"error": "Registration failed"}), 500
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    body = request.get_json(silent=True) or {}
+    email = (body.get("email") or "").strip().lower()
+    password = body.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "Email and password required"}), 400
+
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s", (email,))
+            user = cur.fetchone()
+
+        if not user or not check_password_hash(user[3], password):
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        token = jwt.encode(
+            {"user_id": user[0], "email": user[2], "name": user[1], "exp": datetime.utcnow() + timedelta(days=7)},
+            JWT_SECRET, algorithm="HS256"
+        )
+        return jsonify({"token": token, "user": {"id": user[0], "name": user[1], "email": user[2]}}), 200
+    except Exception as e:
+        app.logger.exception("Login error: %s", e)
+        return jsonify({"error": "Login failed"}), 500
+
+@app.route("/api/auth/me", methods=["GET"])
+@require_auth(optional=False)
+def get_me():
+    return jsonify({"user": request.user}), 200
+
+
 # ─── Static frontend ─────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -180,11 +297,13 @@ def health():
 # ─── POST /api/interview/sessions — Create session + generate questions ──────
 
 @app.route("/api/interview/sessions", methods=["POST"])
+@require_auth(optional=True)
 def create_session():
     body = request.get_json(silent=True) or {}
     name = (body.get("name") or "").strip()
     role = (body.get("role") or "").strip()
     experience_level = body.get("experienceLevel")
+    user_id = request.user["id"] if request.user else None
 
     if not name or not role or experience_level not in ("junior", "mid", "senior", "lead"):
         return jsonify({"error": "Invalid request: name, role and experienceLevel are required."}), 400
@@ -200,21 +319,28 @@ Mix different categories appropriately for the role and level.
 Return ONLY the JSON array, no other text."""
 
     try:
-        ai_text = ai_complete(prompt, max_tokens=2048, response_mime_type="application/json")
+        ai_text = ai_complete(prompt, max_tokens=2048)
+        questions = safe_json_parse(ai_text, None)
     except Exception as e:
         app.logger.exception("AI question generation failed: %s", e)
-        return jsonify({"error": f"Failed to generate interview questions via AI: {str(e)}"}), 500
+        questions = None
 
-    questions = safe_json_parse(ai_text, None)
     if not isinstance(questions, list) or len(questions) == 0:
-        return jsonify({"error": "AI generated an invalid question format."}), 500
+        app.logger.info("Falling back to default questions due to API limit/error.")
+        questions = [
+            {"question": f"Tell me about your experience as a {role}.", "category": "Behavioral"},
+            {"question": "What is the most challenging project you've worked on?", "category": "Problem Solving"},
+            {"question": "How do you handle disagreements with team members?", "category": "Behavioral"},
+            {"question": f"What are the core technical skills required for a {experience_level} {role}?", "category": "Technical"},
+            {"question": "Where do you see your career heading in the next 5 years?", "category": "Behavioral"}
+        ]
 
     try:
         with get_conn() as conn, conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO interview_sessions (name, role, experience_level) "
-                "VALUES (%s, %s, %s) RETURNING id, status, created_at",
-                (name, role, experience_level),
+                "INSERT INTO interview_sessions (user_id, name, role, experience_level) "
+                "VALUES (%s, %s, %s, %s) RETURNING id, status, created_at",
+                (user_id, name, role, experience_level),
             )
             row = cur.fetchone()
             session_id, status, created_at = row
@@ -355,7 +481,6 @@ Evaluate this answer and return a JSON object with exactly these fields:
 Return ONLY the JSON object, no other text."""
 
         try:
-            # Remove response_mime_type because safe_json_parse handles markdown fences and strict mode causes 400 errors
             ai_text = ai_complete(eval_prompt, max_tokens=1024)
         except Exception as e:
             app.logger.exception("AI evaluation failed: %s", e)
@@ -498,6 +623,202 @@ Return ONLY the JSON object, no other text."""
     except Exception as e:
         app.logger.exception("Complete session failed: %s", e)
         return jsonify({"error": "Failed to complete session"}), 500
+
+
+# ─── MEGA PROJECT TOOLS ──────────────────────────────────────────────────────
+
+@app.route("/api/tools/ats-scan", methods=["POST"])
+@require_auth(optional=False)
+def ats_scan():
+    if "resume" not in request.files or "job_description" not in request.form:
+        return jsonify({"error": "PDF resume and job_description are required."}), 400
+
+    resume_file = request.files["resume"]
+    jd_text = request.form["job_description"].strip()
+
+    if resume_file.filename == "" or not resume_file.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "Invalid file. Please upload a PDF."}), 400
+
+    if not jd_text:
+        return jsonify({"error": "Job description cannot be empty."}), 400
+
+    try:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(resume_file.read()))
+        resume_text = ""
+        for page in pdf_reader.pages:
+            resume_text += page.extract_text() + "\n"
+    except Exception as e:
+        app.logger.exception("Failed to parse PDF: %s", e)
+        return jsonify({"error": "Failed to read PDF. Ensure it is not corrupted or password-protected."}), 400
+
+    prompt = f"""You are an elite Technical Recruiter and ATS (Applicant Tracking System) simulator.
+I am providing a candidate's Resume and a target Job Description.
+
+Resume Text:
+{resume_text}
+
+Job Description:
+{jd_text}
+
+Analyze the resume against the job description and return a JSON object with EXACTLY these fields:
+- "matchScore": integer from 0 to 100 representing the ATS match percentage
+- "missingKeywords": array of strings (crucial skills or keywords in the JD that are missing from the resume)
+- "matchingKeywords": array of strings (skills in both)
+- "formattingFeedback": string (1-2 sentences on resume structure and ATS readability)
+- "linkedinOptimization": string (2-3 sentences advising how to update their LinkedIn "About" or "Experience" sections to attract recruiters for this specific role)
+
+Return ONLY the JSON object, no other text."""
+
+    try:
+        ai_text = ai_complete(prompt, max_tokens=1500)
+    except Exception as e:
+        app.logger.exception("ATS scan AI failed: %s", e)
+        return jsonify({"error": "AI analysis failed."}), 500
+
+    fallback = {
+        "matchScore": 0,
+        "missingKeywords": ["Failed to analyze"],
+        "matchingKeywords": [],
+        "formattingFeedback": "We couldn't analyze the formatting due to an API error.",
+        "linkedinOptimization": "Please try again later."
+    }
+    result = safe_json_parse(ai_text, fallback)
+    return jsonify(result), 200
+
+@app.route("/api/tools/resume-builder", methods=["POST"])
+@require_auth(optional=False)
+def resume_builder():
+    if "resume" not in request.files or "job_description" not in request.form:
+        return jsonify({"error": "PDF resume and job_description are required."}), 400
+
+    resume_file = request.files["resume"]
+    jd_text = request.form["job_description"].strip()
+
+    if resume_file.filename == "" or not resume_file.filename.lower().endswith(".pdf"):
+        return jsonify({"error": "Invalid file. Please upload a PDF."}), 400
+
+    try:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(resume_file.read()))
+        resume_text = ""
+        for page in pdf_reader.pages:
+            resume_text += page.extract_text() + "\n"
+    except Exception as e:
+        app.logger.exception("Failed to parse PDF: %s", e)
+        return jsonify({"error": "Failed to read PDF."}), 400
+
+    prompt = f"""You are an elite Resume Writer. Your task is to rewrite the candidate's resume to perfectly match the provided Job Description, and output it in the famous LaTeX 'Jake's Resume' format.
+
+Candidate's Original Resume:
+{resume_text}
+
+Target Job Description:
+{jd_text}
+
+Instructions:
+1. Rewrite the experience bullet points using strong action verbs and metrics.
+2. Tailor the skills section to include keywords from the Job Description.
+3. Keep it strictly to ONE page.
+4. Output the complete, compilable LaTeX code based strictly on the standard Jake's Resume template. Do NOT include any markdown formatting or code blocks (like ```latex). JUST output the raw LaTeX code starting with \documentclass and ending with \end{{document}}.
+
+Return ONLY the raw LaTeX string."""
+
+    try:
+        # Use plain text response, not json
+        ai_text = ai_complete(prompt, max_tokens=3000)
+        # Strip markdown fences if Gemini added them anyway
+        ai_text = re.sub(r'^```[a-zA-Z]*\n', '', ai_text)
+        ai_text = re.sub(r'\n```$', '', ai_text)
+        return jsonify({"latex": ai_text.strip()}), 200
+    except Exception as e:
+        app.logger.exception("Resume builder AI failed: %s", e)
+        return jsonify({"error": "AI generation failed."}), 500
+
+@app.route("/api/tools/cover-letter", methods=["POST"])
+@require_auth(optional=False)
+def cover_letter():
+    if "resume" not in request.files or "job_description" not in request.form:
+        return jsonify({"error": "PDF resume and job_description are required."}), 400
+
+    resume_file = request.files["resume"]
+    jd_text = request.form["job_description"].strip()
+
+    try:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(resume_file.read()))
+        resume_text = ""
+        for page in pdf_reader.pages:
+            resume_text += page.extract_text() + "\n"
+    except Exception as e:
+        return jsonify({"error": "Failed to read PDF."}), 400
+
+    prompt = f"""You are an expert Career Coach. Write a highly professional, engaging, and personalized cover letter for the candidate based on their resume and the target Job Description.
+
+Candidate's Resume:
+{resume_text}
+
+Target Job Description:
+{jd_text}
+
+Instructions:
+1. Do not use generic buzzwords. Draw specific connections between the candidate's experience and the job's requirements.
+2. Keep it to 3-4 paragraphs.
+3. Use standard business letter formatting (include placeholder [Company Name], etc. if missing).
+
+Return ONLY the plain text of the cover letter."""
+
+    try:
+        ai_text = ai_complete(prompt, max_tokens=1000)
+        return jsonify({"coverLetter": ai_text.strip()}), 200
+    except Exception as e:
+        app.logger.exception("Cover letter AI failed: %s", e)
+        return jsonify({"error": "AI generation failed."}), 500
+
+@app.route("/api/tools/leetcode", methods=["POST"])
+@require_auth(optional=False)
+def leetcode_assistant():
+    body = request.get_json(silent=True) or {}
+    problem = (body.get("problem") or "").strip()
+    code = (body.get("code") or "").strip()
+    language = (body.get("language") or "python").strip()
+
+    if not problem or not code:
+        return jsonify({"error": "Problem description and code are required."}), 400
+
+    prompt = f"""You are an expert LeetCode Interviewer at a FAANG company.
+The candidate is solving the following problem:
+{problem}
+
+Here is their current {language} code:
+```
+{code}
+```
+
+Instructions:
+1. DO NOT give them the direct answer or the full corrected code.
+2. Provide a JSON object evaluating their approach.
+3. Include time/space complexity analysis (Big O).
+4. Point out edge cases they missed.
+5. Give a progressive hint to guide them.
+
+Return ONLY a JSON object with these EXACT fields:
+- "complexity": string (e.g. "Time: O(N), Space: O(1)")
+- "edgeCases": array of strings
+- "feedback": string (2-3 sentences analyzing their approach)
+- "hint": string (a guiding hint)"""
+
+    try:
+        ai_text = ai_complete(prompt, max_tokens=1000)
+    except Exception as e:
+        app.logger.exception("LeetCode AI failed: %s", e)
+        return jsonify({"error": "AI analysis failed."}), 500
+
+    fallback = {
+        "complexity": "Unknown",
+        "edgeCases": ["Could not evaluate edge cases"],
+        "feedback": "An API error occurred.",
+        "hint": "Try breaking down the problem into smaller steps."
+    }
+    result = safe_json_parse(ai_text, fallback)
+    return jsonify(result), 200
 
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
