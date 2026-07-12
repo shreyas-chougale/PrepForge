@@ -462,7 +462,7 @@ function renderInterviewShell() {
                     <span id="interim-text" class="text-muted-foreground italic truncate"></span>
                 </div>
                 <div id="input-row" class="input-row">
-                    <textarea id="text-input" placeholder="Type your answer, or press the mic to speak..." rows="3"></textarea>
+                    <textarea id="text-input" placeholder="Press the mic to speak your answer..." rows="3" readonly></textarea>
                     <div class="flex flex-col gap-2 shrink-0">
                         <button id="mic-btn" class="icon-btn" title="Record answer with microphone" type="button" ${Voice.supported ? "" : "style=\"display:none\""}>
                             ${ICON("mic", 'class="w-4 h-4"')}
@@ -475,7 +475,7 @@ function renderInterviewShell() {
                 <p class="text-xs text-center text-muted-foreground" style="opacity:.6">${
                     Voice.supported
                         ? `<span class="sm:hidden">Mic to speak · ⌘↵ submit</span><span class="sm:inline">Press mic to speak · Ctrl+Enter to submit · Questions are read aloud automatically</span>`
-                        : "Ctrl+Enter to submit"
+                        : "Voice input is not supported in this browser."
                 }</p>
             </div>
         </div>
@@ -530,7 +530,7 @@ function updateInputRowState() {
         ta.disabled = interviewState.isSubmitting || !awaiting;
         ta.placeholder = !awaiting ? "Waiting for evaluation..."
             : Voice.state.isListening ? "Listening... (speak your answer)"
-            : "Type your answer, or press the mic to speak...";
+            : "Press the mic to speak your answer...";
     }
     const mic = document.getElementById("mic-btn");
     if (mic) mic.disabled = interviewState.isSubmitting || !awaiting;
