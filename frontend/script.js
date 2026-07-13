@@ -68,7 +68,6 @@ const api = {
         return r.json();
     },
     async completeSession(id) {
-    async completeSession(id) {
         const headers = { "Content-Type": "application/json" };
         if (Auth.token) headers["Authorization"] = `Bearer ${Auth.token}`;
         const r = await fetch(`${API_BASE}/api/interview/sessions/${id}/complete`, {
