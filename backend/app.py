@@ -24,6 +24,7 @@ from flask_cors import CORS
 import google.generativeai as genai
 import pypdf
 import io
+import tenacity
 
 try:
     from dotenv import load_dotenv
@@ -706,7 +707,7 @@ def resume_builder():
         app.logger.exception("Failed to parse PDF: %s", e)
         return jsonify({"error": "Failed to read PDF."}), 400
 
-    prompt = f"""You are an elite Resume Writer. Your task is to rewrite the candidate's resume to perfectly match the provided Job Description, and output it in the famous LaTeX 'Jake's Resume' format.
+    prompt = rf"""You are an elite Resume Writer. Your task is to rewrite the candidate's resume to perfectly match the provided Job Description, and output it in the famous LaTeX 'Jake's Resume' format.
 
 Candidate's Original Resume:
 {resume_text}
