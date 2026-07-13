@@ -328,28 +328,35 @@ window.addEventListener("DOMContentLoaded", route);
 
 function renderLogin() {
     app.innerHTML = `
-    <div class="min-h-screen bg-background flex items-center justify-center p-4">
-        <div class="card p-6 sm:p-8 w-full max-w-md">
-            <div class="text-center mb-6">
-                <div class="brand-icon w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4">
+    <div class="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+        <!-- Background Image -->
+        <div class="absolute inset-0 z-0">
+            <img src="images/hero-bg.png" class="w-full h-full object-cover" alt="Background">
+            <div class="absolute inset-0" style="background: linear-gradient(135deg, hsl(var(--background)/0.7), hsl(var(--background)/0.95)); backdrop-filter: blur(12px);"></div>
+        </div>
+
+        <!-- Form Card -->
+        <div class="card p-8 w-full max-w-sm relative z-10 shadow-2xl" style="background:hsl(var(--card)/0.7); backdrop-filter:blur(20px); border:1px solid hsl(var(--border)/0.5);">
+            <div class="text-center mb-8">
+                <div class="brand-icon w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4 shadow-lg">
                     ${ICON("hammer", 'class="w-6 h-6 text-white"')}
                 </div>
-                <h2 class="text-2xl font-bold">Welcome Back</h2>
-                <p class="text-sm text-muted-foreground mt-1">Sign in to access your AI Career Dashboard</p>
+                <h2 class="text-2xl font-bold tracking-tight">Welcome Back</h2>
+                <p class="text-xs text-muted-foreground mt-2">Sign in to your career dashboard</p>
             </div>
-            <form id="login-form" class="space-y-4">
-                <div>
-                    <label class="text-sm font-semibold text-foreground block mb-1">Email</label>
-                    <input class="input" type="email" name="email" required placeholder="name@example.com">
+            <form id="login-form" class="space-y-5">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-foreground uppercase tracking-wider block">Email</label>
+                    <input class="input bg-background/50 border-border/50 focus:bg-background transition-colors" type="email" name="email" required placeholder="name@example.com">
                 </div>
-                <div>
-                    <label class="text-sm font-semibold text-foreground block mb-1">Password</label>
-                    <input class="input" type="password" name="password" required placeholder="••••••••">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-foreground uppercase tracking-wider block">Password</label>
+                    <input class="input bg-background/50 border-border/50 focus:bg-background transition-colors" type="password" name="password" required placeholder="••••••••">
                 </div>
-                <button type="submit" id="login-submit" class="btn btn-primary w-full">Sign In</button>
+                <button type="submit" id="login-submit" class="btn btn-primary w-full shadow-md mt-2">Sign In</button>
             </form>
-            <p class="text-center text-sm text-muted-foreground mt-6">
-                Don't have an account? <a href="#/register" class="text-primary hover:underline">Sign up</a>
+            <p class="text-center text-xs text-muted-foreground mt-8">
+                Don't have an account? <a href="#/register" class="text-primary font-semibold hover:underline">Sign up</a>
             </p>
         </div>
     </div>`;
@@ -376,32 +383,39 @@ function renderLogin() {
 
 function renderRegister() {
     app.innerHTML = `
-    <div class="min-h-screen bg-background flex items-center justify-center p-4">
-        <div class="card p-6 sm:p-8 w-full max-w-md">
-            <div class="text-center mb-6">
-                <div class="brand-icon w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4">
+    <div class="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+        <!-- Background Image -->
+        <div class="absolute inset-0 z-0">
+            <img src="images/hero-bg.png" class="w-full h-full object-cover" alt="Background">
+            <div class="absolute inset-0" style="background: linear-gradient(135deg, hsl(var(--background)/0.7), hsl(var(--background)/0.95)); backdrop-filter: blur(12px);"></div>
+        </div>
+
+        <!-- Form Card -->
+        <div class="card p-8 w-full max-w-sm relative z-10 shadow-2xl" style="background:hsl(var(--card)/0.7); backdrop-filter:blur(20px); border:1px solid hsl(var(--border)/0.5);">
+            <div class="text-center mb-8">
+                <div class="brand-icon w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-4 shadow-lg">
                     ${ICON("hammer", 'class="w-6 h-6 text-white"')}
                 </div>
-                <h2 class="text-2xl font-bold">Create Account</h2>
-                <p class="text-sm text-muted-foreground mt-1">Start your journey to placement readiness</p>
+                <h2 class="text-2xl font-bold tracking-tight">Create Account</h2>
+                <p class="text-xs text-muted-foreground mt-2">Start your journey to placement readiness</p>
             </div>
-            <form id="register-form" class="space-y-4">
-                <div>
-                    <label class="text-sm font-semibold text-foreground block mb-1">Full Name</label>
-                    <input class="input" type="text" name="name" required placeholder="Jane Doe">
+            <form id="register-form" class="space-y-5">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-foreground uppercase tracking-wider block">Full Name</label>
+                    <input class="input bg-background/50 border-border/50 focus:bg-background transition-colors" type="text" name="name" required placeholder="Jane Doe">
                 </div>
-                <div>
-                    <label class="text-sm font-semibold text-foreground block mb-1">Email</label>
-                    <input class="input" type="email" name="email" required placeholder="name@example.com">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-foreground uppercase tracking-wider block">Email</label>
+                    <input class="input bg-background/50 border-border/50 focus:bg-background transition-colors" type="email" name="email" required placeholder="name@example.com">
                 </div>
-                <div>
-                    <label class="text-sm font-semibold text-foreground block mb-1">Password</label>
-                    <input class="input" type="password" name="password" required minlength="6" placeholder="Min 6 characters">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-foreground uppercase tracking-wider block">Password</label>
+                    <input class="input bg-background/50 border-border/50 focus:bg-background transition-colors" type="password" name="password" required minlength="6" placeholder="Min 6 chars">
                 </div>
-                <button type="submit" id="register-submit" class="btn btn-primary w-full">Create Account</button>
+                <button type="submit" id="register-submit" class="btn btn-primary w-full shadow-md mt-2">Create Account</button>
             </form>
-            <p class="text-center text-sm text-muted-foreground mt-6">
-                Already have an account? <a href="#/login" class="text-primary hover:underline">Sign in</a>
+            <p class="text-center text-xs text-muted-foreground mt-8">
+                Already have an account? <a href="#/login" class="text-primary font-semibold hover:underline">Sign in</a>
             </p>
         </div>
     </div>`;
