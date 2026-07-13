@@ -174,6 +174,11 @@ def safe_json_parse(text: str, fallback):
 app = Flask(__name__, static_folder=None)
 CORS(app)
 
+try:
+    init_db()
+except Exception as e:
+    app.logger.error(f"Failed to initialize database: {e}")
+
 
 # ─── Authentication ──────────────────────────────────────────────────────────
 
