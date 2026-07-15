@@ -157,7 +157,6 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
       <div className="mx-4 h-px" style={{ background: "rgba(255,255,255,0.07)" }} />
 
       {/* Auth */}
-      <UserSection {...auth} />
     </div>
   );
 }
