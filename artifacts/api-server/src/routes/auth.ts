@@ -43,17 +43,19 @@ router.get("/auth/user", (req: Request, res: Response) => {
   res.json({ user: req.isAuthenticated() ? req.user : null });
 });
 
-router.post("/register", async (req: Request, res: Response) => {
+router.post("/register", async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, firstName, lastName } = req.body;
     
     if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({ error: "All fields are required" });
+      res.status(400).json({ error: "All fields are required" });
+      return;
     }
 
     const existingUser = await db.select().from(usersTable).where(eq(usersTable.email, email));
     if (existingUser.length > 0) {
-      return res.status(400).json({ error: "Email already in use" });
+      res.status(400).json({ error: "Email already in use" });
+      return;
     }
 
     const passwordHash = hashPassword(password);
@@ -91,17 +93,19 @@ router.post("/register", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/login", async (req: Request, res: Response) => {
+router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
+      res.status(400).json({ error: "Email and password required" });
+      return;
     }
 
     const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
     if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      res.status(401).json({ error: "Invalid email or password" });
+      return;
     }
 
     const now = Math.floor(Date.now() / 1000);
