@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import crypto from "crypto";
 import {
   clearSession,
@@ -10,6 +10,9 @@ import {
   SESSION_TTL,
   type SessionData,
 } from "../lib/auth";
+
+// Automatically add the missing column to the live database on startup!
+db.execute(sql`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_hash" varchar;`).catch(console.error);
 
 const router: IRouter = Router();
 
