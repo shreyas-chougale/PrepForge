@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, interviewSessionsTable } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
-import { textToSpeech, speechToText, ensureCompatibleFormat } from "@workspace/integrations-openai-ai-server/audio";
+import { textToSpeech, speechToText, detectAudioFormat } from "@workspace/integrations-openai-ai-server/audio";
 import { desc, sql } from "drizzle-orm";
 import {
   GenerateInterviewQuestionsBody,
@@ -34,7 +34,7 @@ router.post("/interview/generate", async (req, res): Promise<void> => {
     questions = JSON.parse(content);
   } catch {
     const matches = content.match(/"[^"]+\?"/g) ?? [];
-    questions = matches.map((q) => q.slice(1, -1));
+    questions = matches.map((q: string) => q.slice(1, -1));
   }
 
   res.json({
@@ -142,7 +142,7 @@ router.get("/interview/stats", async (_req, res): Promise<void> => {
   const totalSessions = sessions.length;
   const averageScore =
     totalSessions > 0
-      ? sessions.reduce((sum, s) => sum + s.overallScore, 0) / totalSessions
+      ? sessions.reduce((sum: number, s: any) => sum + s.overallScore, 0) / totalSessions
       : 0;
 
   const roleCounts: Record<string, number> = {};
@@ -189,8 +189,9 @@ router.post("/interview/stt", async (req, res): Promise<void> => {
   }
 
   const buffer = Buffer.from(audio, "base64");
-  const { buffer: compatibleBuffer, format } = await ensureCompatibleFormat(buffer);
-  const transcript = await speechToText(compatibleBuffer, format as any);
+  const detected = detectAudioFormat(buffer);
+  const format = detected === "unknown" ? "webm" : detected; // Default to webm if unknown
+  const transcript = await speechToText(buffer, format as any);
   res.json({ transcript });
 });
 
