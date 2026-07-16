@@ -216,17 +216,26 @@ export async function textToSpeechStream(
   })();
 }
 
-/** Speech-to-Text using whisper-1. */
+/** Speech-to-Text using whisper-1 with fallback to whisper-large-v3 for Groq. */
 export async function speechToText(
   audioBuffer: Buffer,
   format: "wav" | "mp3" | "webm" = "wav"
 ): Promise<string> {
   const file = await toFile(audioBuffer, `audio.${format}`);
-  const response = await openai.audio.transcriptions.create({
-    file,
-    model: "whisper-1",
-  });
-  return response.text;
+  try {
+    const response = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+    });
+    return response.text;
+  } catch (error: any) {
+    console.warn("whisper-1 failed, falling back to whisper-large-v3", error.message);
+    const fallbackResponse = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-large-v3",
+    });
+    return fallbackResponse.text;
+  }
 }
 
 /** Streaming Speech-to-Text. */
