@@ -44,7 +44,7 @@ export default function History() {
               <EmptyState icon={Hammer} title="No interviews yet" desc="Start your first mock interview to see it here." />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {interviewSessions.map((session) => (
+                {interviewSessions.map((session: any) => (
                   <Card key={session.id} className="hover:border-primary/50 transition-colors">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
@@ -72,7 +72,7 @@ export default function History() {
               <EmptyState icon={Brain} title="No aptitude tests" desc="Take a test to evaluate your skills." />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {aptitudeSessions.map((session) => (
+                {aptitudeSessions.map((session: any) => (
                   <Card key={session.id} className="hover:border-primary/50 transition-colors">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
@@ -105,7 +105,7 @@ export default function History() {
               <EmptyState icon={FileText} title="No resumes analyzed" desc="Upload a resume to get feedback." />
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {resumeSessions.map((session) => (
+                {resumeSessions.map((session: any) => (
                   <Card key={session.id} className="hover:border-primary/50 transition-colors">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
