@@ -48,11 +48,13 @@ export function useAuth(): AuthState {
 
   const login = useCallback(() => {
     const base = (import.meta as any).env?.BASE_URL?.replace(/\/+$/, "") || "";
-    window.location.href = `/api/login?returnTo=${encodeURIComponent(base || "/")}`;
+    window.location.href = `${base}/login`;
   }, []);
 
   const logout = useCallback(() => {
-    window.location.href = "/api/logout";
+    fetch("/api/logout", { method: "POST" }).finally(() => {
+      window.location.reload();
+    });
   }, []);
 
   return {
