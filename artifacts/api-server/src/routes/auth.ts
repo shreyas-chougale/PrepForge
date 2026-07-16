@@ -82,8 +82,9 @@ router.post("/register", async (req: Request, res: Response) => {
     setSessionCookie(res, sid);
 
     res.json({ user: sessionData.user });
-  } catch (error) {
-    res.status(500).json({ error: "Registration failed" });
+  } catch (error: any) {
+    console.error("Registration error:", error);
+    res.status(500).json({ error: error.message || "Registration failed" });
   }
 });
 
@@ -117,8 +118,9 @@ router.post("/login", async (req: Request, res: Response) => {
     setSessionCookie(res, sid);
 
     res.json({ user: sessionData.user });
-  } catch (error) {
-    res.status(500).json({ error: "Login failed" });
+  } catch (error: any) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: error.message || "Login failed" });
   }
 });
 
