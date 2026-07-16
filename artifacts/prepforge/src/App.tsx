@@ -42,8 +42,8 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
                 <div className="w-16 h-16 rounded-full flex items-center justify-center mb-6" style={{ background: "rgba(99, 102, 241, 0.1)" }}>
                   <Lock className="w-8 h-8 text-indigo-500" />
                 </div>
-                <h1 className="text-2xl font-bold mb-3 text-white">Sign in required</h1>
-                <p className="text-white/60 mb-8 max-w-md">
+                <h1 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">Sign in required</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-8 max-w-md">
                   You need to be signed in to access this feature. Create an account or log in to continue preparing for your interviews.
                 </p>
                 <button
