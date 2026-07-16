@@ -78,24 +78,37 @@ export default function Interview() {
     }
   };
 
-  const playQuestionAudio = async (text: string) => {
-    if (!text?.trim()) return;
-    try {
-      setIsPlaying(true);
-      const res = await tts.mutateAsync({
-        data: { text, voice: "alloy" }
-      });
-      if (audioRef.current) {
-        const mimeType = res.format === "mp3" ? "audio/mpeg" : `audio/${res.format}`;
-        audioRef.current.src = `data:${mimeType};base64,${res.audio}`;
-        audioRef.current.play().catch((e) => console.error("Audio playback error:", e));
+    const playQuestionAudio = async (text: string) => {
+      try {
+        setIsPlaying(true);
+        if ("speechSynthesis" in window) {
+          // Cancel any ongoing speech
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          
+          // Try to find an English voice
+          const voices = window.speechSynthesis.getVoices();
+          const enVoice = voices.find(v => v.lang.startsWith("en-") || v.lang === "en");
+          if (enVoice) utterance.voice = enVoice;
+
+          utterance.onend = () => setIsPlaying(false);
+          utterance.onerror = (e) => {
+            console.error("Speech synthesis error", e);
+            setIsPlaying(false);
+          };
+
+          window.speechSynthesis.speak(utterance);
+        } else {
+          toast({ title: "Text-to-speech not supported in this browser", variant: "destructive" });
+          setIsPlaying(false);
+        }
+      } catch (err) {
+        console.error("TTS error", err);
+        setIsPlaying(false);
       }
-    } catch (err) {
-      console.error("TTS error", err);
-    } finally {
-      setIsPlaying(false);
-    }
-  };
+    };
 
   const handleRecordToggle = async () => {
     if (isRecording) {
