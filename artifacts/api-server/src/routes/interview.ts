@@ -53,16 +53,16 @@ router.post("/interview/evaluate", async (req, res): Promise<void> => {
   const { question, answer, role, company } = parsed.data;
 
   const prompt = `You are evaluating a job interview answer for a ${role} position at ${company}.
-Question: "${question}"
-Candidate's Answer: "${answer}"
-
-Rate the answer from 0-100 and provide structured feedback. Return ONLY valid JSON in this exact format:
-{
-  "score": <number 0-100>,
-  "feedback": "<overall feedback in 2-3 sentences>",
-  "strengths": ["<strength 1>", "<strength 2>"],
-  "improvements": ["<area to improve 1>", "<area to improve 2>"]
-}`;
+  Question: "${question}"
+  Candidate's Answer: "${answer}"
+  
+  Rate the answer from 0-10 and provide structured feedback. Return ONLY valid JSON in this exact format:
+  {
+    "score": <number 0-10>,
+    "feedback": "<overall feedback in 2-3 sentences>",
+    "strengths": ["<strength 1>", "<strength 2>"],
+    "improvements": ["<area to improve 1>", "<area to improve 2>"]
+  }`;
 
   const response = await openai.chat.completions.create({
     model: "llama-3.1-8b-instant",
