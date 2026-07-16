@@ -74,6 +74,13 @@ router.get("/auth/user", (req: Request, res: Response) => {
 });
 
 router.get("/login", async (req: Request, res: Response) => {
+  if (!process.env.REPL_ID) {
+    const mockUser = await upsertUser({ sub: "mock-user-123", email: "guest@prepforge.app", first_name: "Guest", last_name: "User", profile_image_url: "https://api.dicebear.com/7.x/avataaars/svg?seed=Guest" });
+    const now = Math.floor(Date.now() / 1000);
+    const sid = await createSession({ user: { id: mockUser.id, email: mockUser.email ?? null, firstName: mockUser.firstName ?? null, lastName: mockUser.lastName ?? null, profileImageUrl: mockUser.profileImageUrl ?? null }, access_token: "mock", expires_at: now + 86400 });
+    setSessionCookie(res, sid);
+    return res.redirect(getSafeReturnTo(req.query.returnTo));
+  }
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
   const returnTo = getSafeReturnTo(req.query.returnTo);
@@ -165,6 +172,11 @@ router.get("/callback", async (req: Request, res: Response) => {
 });
 
 router.get("/logout", async (req: Request, res: Response) => {
+  if (!process.env.REPL_ID) {
+    const sid = getSessionId(req);
+    await clearSession(res, sid);
+    return res.redirect("/");
+  }
   const config = await getOidcConfig();
   const origin = getOrigin(req);
   const sid = getSessionId(req);
