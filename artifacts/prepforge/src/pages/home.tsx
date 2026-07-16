@@ -268,7 +268,7 @@ export default function Home() {
           <div className="card-clean overflow-hidden">
             {recentSessions.length > 0 ? (
               <div className="divide-y divide-border">
-                {recentSessions.slice(0, 5).map((session) => (
+                {recentSessions.slice(0, 5).map((session: any) => (
                   <div key={session.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#ede9fe" }}>
