@@ -15,6 +15,8 @@ import LinkedIn from "@/pages/linkedin";
 import CoverLetter from "@/pages/cover-letter";
 import Leetcode from "@/pages/leetcode";
 import QuestionBank from "@/pages/question-bank";
+import Login from "@/pages/login";
+import Register from "@/pages/register";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +69,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/login" component={Login} />
+      <Route path="/register" component={Register} />
       <ProtectedRoute path="/interview" component={Interview} />
       <ProtectedRoute path="/aptitude" component={Aptitude} />
       <ProtectedRoute path="/resume" component={Resume} />
