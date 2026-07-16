@@ -21,7 +21,8 @@ interface LinkedInResult {
 
 export default function LinkedIn() {
   const { toast } = useToast();
-  const [profileText, setProfileText] = useState("");
+  const [profilePdfBase64, setProfilePdfBase64] = useState("");
+  const [fileName, setFileName] = useState("");
   const [targetRole, setTargetRole] = useState("");
   const [targetIndustry, setTargetIndustry] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -29,8 +30,8 @@ export default function LinkedIn() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profileText.trim() || !targetRole.trim()) {
-      toast({ title: "Please fill required fields", variant: "destructive" });
+    if (!profilePdfBase64 || !targetRole.trim()) {
+      toast({ title: "Please upload your LinkedIn profile PDF and fill required fields", variant: "destructive" });
       return;
     }
     setIsLoading(true);
@@ -38,16 +39,31 @@ export default function LinkedIn() {
       const res = await fetch("/api/linkedin/optimize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profileText, targetRole, targetIndustry }),
+        body: JSON.stringify({ profilePdfBase64, targetRole, targetIndustry }),
       });
-      if (!res.ok) throw new Error("Failed");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
       setResult(data);
-    } catch {
-      toast({ title: "Analysis failed. Please try again.", variant: "destructive" });
+    } catch (err: any) {
+      toast({ title: err.message || "Analysis failed. Please try again.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast({ title: "Please upload a valid PDF file", variant: "destructive" });
+      return;
+    }
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setProfilePdfBase64(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const scoreColor = (s: number) =>
@@ -80,15 +96,16 @@ export default function LinkedIn() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Your LinkedIn Profile Content <span className="text-destructive">*</span></Label>
-                  <Textarea
-                    value={profileText}
-                    onChange={(e) => setProfileText(e.target.value)}
-                    placeholder="Paste your LinkedIn headline, summary, experience, skills, and any other sections here..."
-                    className="min-h-[220px] resize-none text-sm"
-                    required
+                  <Label>Upload LinkedIn Profile (PDF) <span className="text-destructive">*</span></Label>
+                  <Input 
+                    type="file" 
+                    accept=".pdf" 
+                    onChange={handleFileUpload} 
+                    required 
                   />
-                  <p className="text-xs text-muted-foreground">Copy & paste from your LinkedIn profile — headline, about section, experience descriptions, skills list.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Go to your LinkedIn profile {">"} More {">"} Save to PDF, and upload it here.
+                  </p>
                 </div>
                 <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
                   <Sparkles className="h-4 w-4 mr-2" />
