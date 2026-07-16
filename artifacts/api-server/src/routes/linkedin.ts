@@ -1,25 +1,44 @@
 import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import pdfParse from "pdf-parse";
 
 const router: IRouter = Router();
 
 router.post("/linkedin/optimize", async (req, res): Promise<void> => {
-  const { profileText, targetRole, targetIndustry } = req.body as {
-    profileText?: string;
-    targetRole?: string;
-    targetIndustry?: string;
-  };
+  try {
+    const { profilePdfBase64, targetRole, targetIndustry } = req.body as {
+      profilePdfBase64?: string;
+      targetRole?: string;
+      targetIndustry?: string;
+    };
 
-  if (!profileText || !targetRole) {
-    res.status(400).json({ error: "profileText and targetRole are required" });
-    return;
-  }
+    if (!profilePdfBase64 || !targetRole) {
+      res.status(400).json({ error: "LinkedIn Profile PDF and targetRole are required" });
+      return;
+    }
 
-  const prompt = `You are a LinkedIn profile optimization expert and career coach. Analyze the following LinkedIn profile for someone targeting a "${targetRole}" role${targetIndustry ? ` in the "${targetIndustry}" industry` : ""}.
+    // Decode base64 PDF
+    let profileText = "";
+    try {
+      const base64Data = profilePdfBase64.replace(/^data:application\/pdf;base64,/, "");
+      const pdfBuffer = Buffer.from(base64Data, "base64");
+      const pdfData = await pdfParse(pdfBuffer);
+      profileText = pdfData.text;
+    } catch (err) {
+      res.status(400).json({ error: "Failed to parse the PDF file. Please ensure it is a valid PDF." });
+      return;
+    }
+
+    if (!profileText || profileText.trim().length < 50) {
+      res.status(400).json({ error: "No text could be extracted from the PDF. Is it an image-based PDF?" });
+      return;
+    }
+
+    const prompt = `You are a LinkedIn profile optimization expert and career coach. Analyze the following LinkedIn profile for someone targeting a "${targetRole}" role${targetIndustry ? ` in the "${targetIndustry}" industry` : ""}.
 
 Profile:
 ---
-${profileText.slice(0, 6000)}
+${profileText.slice(0, 10000)}
 ---
 
 Provide a comprehensive optimization analysis. Return ONLY valid JSON in this exact format:
@@ -45,22 +64,26 @@ Provide a comprehensive optimization analysis. Return ONLY valid JSON in this ex
   "quickWins": ["<quick win 1>", "<quick win 2>", "<quick win 3>"]
 }`;
 
-  const response = await openai.chat.completions.create({
-    model: "llama-3.1-8b-instant",
-    max_completion_tokens: 2048,
-    messages: [{ role: "user", content: prompt }],
-  });
+    const response = await openai.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      max_completion_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
 
-  const content = response.choices[0]?.message?.content ?? "{}";
-  let result: any = {};
-  try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) result = JSON.parse(jsonMatch[0]);
-  } catch {
-    result = { error: "Failed to parse response" };
+    const content = response.choices[0]?.message?.content ?? "{}";
+    let result: any = {};
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) result = JSON.parse(jsonMatch[0]);
+    } catch {
+      result = { error: "Failed to parse response" };
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    console.error("LinkedIn Optimization Error:", error);
+    res.status(500).json({ error: error.message || "Failed to optimize profile" });
   }
-
-  res.json(result);
 });
 
 export default router;
