@@ -42,7 +42,7 @@ const frontendDist = path.resolve(import.meta.dirname, "../../prepforge/dist");
 app.use(express.static(frontendDist));
 
 // Catch-all route for SPA client-side routing
-app.get("*", (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.resolve(frontendDist, "index.html"));
 });
 export default app;
