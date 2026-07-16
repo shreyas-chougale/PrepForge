@@ -1,0 +1,171 @@
+Build a COMPLETE working MVP web app named "PrepForge" — an AI-powered placement preparation platform.
+
+IMPORTANT:
+This project will be used ONLY on Replit. Do NOT structure it for export. Make it run directly in Replit preview with a single run command.
+
+--------------------------------------------------
+
+TECH STACK (OPTIMIZED FOR REPLIT):
+
+Frontend:
+- HTML, CSS, JavaScript (no frameworks)
+
+Backend:
+- Node.js + Express (single server.js)
+
+AI:
+- OpenAI API
+
+--------------------------------------------------
+
+PROJECT STRUCTURE (SIMPLE):
+
+index.html
+style.css
+script.js
+server.js
+package.json
+.env (for API key)
+
+NO frontend/backend folders
+NO React
+NO TypeScript
+NO complex structure
+
+--------------------------------------------------
+
+RUN REQUIREMENT:
+
+- Must run using:
+  npm install
+  npm start
+
+- Server must serve frontend and APIs together
+- Replit preview must open automatically
+
+--------------------------------------------------
+
+MAIN FEATURES (3 modules):
+
+1. Mock Interview
+2. Aptitude Test
+3. Resume Analyzer
+
+Each module must:
+- Work independently
+- Have separate inputs
+- Be accessible via navbar
+
+--------------------------------------------------
+
+UI REQUIREMENTS:
+
+- Clean modern UI (important for demo)
+- Same design for all pages
+- Fully responsive
+- Simple CSS only (no frameworks)
+- Professional look
+
+--------------------------------------------------
+
+FEATURE 1: MOCK INTERVIEW (VOICE)
+
+Inputs:
+- Name
+- Role
+- Experience
+- Company
+
+Functionality:
+- Generate 5 questions using OpenAI
+- Ask one-by-one (like real interview)
+
+Voice:
+- Use Web Speech API
+- Speak question (text-to-speech)
+- Record answer (speech-to-text)
+- Show transcript
+
+--------------------------------------------------
+
+FEATURE 2: APTITUDE TEST
+
+Inputs:
+- Company
+- Category
+
+Functionality:
+- Generate MCQs using OpenAI
+- Show options
+- Select answers
+- Submit button
+- Calculate score
+- Show result
+
+--------------------------------------------------
+
+FEATURE 3: RESUME ANALYZER
+
+Inputs:
+- Upload PDF
+- Role
+- Company
+
+Functionality:
+- Extract text from PDF
+- Send to OpenAI
+- Return:
+  - Score
+  - Skills
+  - Suggestions
+
+--------------------------------------------------
+
+BACKEND:
+
+Create Express APIs:
+- /api/interview
+- /api/aptitude
+- /api/resume
+
+Use:
+- express
+- multer (for file upload)
+- pdf-parse
+- dotenv
+- openai
+
+--------------------------------------------------
+
+ENV:
+
+Use .env file:
+OPENAI_API_KEY=your_key
+
+Load using dotenv
+
+--------------------------------------------------
+
+IMPORTANT RULES:
+
+- Do NOT use React
+- Do NOT create extra folders
+- Do NOT use Replit-specific plugins
+- Do NOT leave any feature incomplete
+- Ensure all APIs return real data
+- Ensure buttons and submission work
+- Ensure UI loads properly
+
+--------------------------------------------------
+
+FINAL OUTPUT:
+
+- Fully working MVP
+- Runs instantly on Replit
+- No errors
+- Clean UI
+- All 3 features functional
+
+Also:
+- Automatically start server on run
+- Ensure preview works without manual setup
