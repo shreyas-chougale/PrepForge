@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
-import * as pdfParseModule from "pdf-parse";
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { PDFParse } from "pdf-parse";
 
 const router: IRouter = Router();
 
@@ -23,9 +22,11 @@ router.post("/linkedin/optimize", async (req, res): Promise<void> => {
     try {
       const base64Data = profilePdfBase64.replace(/^data:application\/pdf;base64,/, "");
       const pdfBuffer = Buffer.from(base64Data, "base64");
-      const pdfData = await pdfParse(pdfBuffer);
+      const parser = new PDFParse({ data: pdfBuffer });
+      const pdfData = await parser.getText();
       profileText = pdfData.text;
     } catch (err) {
+      console.error("PDF Parsing Error:", err);
       res.status(400).json({ error: "Failed to parse the PDF file. Please ensure it is a valid PDF." });
       return;
     }
