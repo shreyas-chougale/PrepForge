@@ -6,7 +6,7 @@
 ![Express.js](https://img.shields.io/badge/express.js-%23404d59.svg?style=for-the-badge&logo=express&logoColor=%2361DAFB)
 ![PostgreSQL](https://img.shields.io/badge/postgresql-4169e1?style=for-the-badge&logo=postgresql&logoColor=white)
 
-**🌐 Live Demo:** [https://prepforge.vercel.app]([https://prepforge.vercel.app](https://mock-interview-91bt.onrender.com/)) 
+**🌐 Live Demo:** [https://prepforge.vercel.app]([[https://prepforge.vercel.app](https://mock-interview-91bt.onrender.com/)](https://mock-interview-91bt.onrender.com/)) 
 
 PrepForge is your ultimate AI-powered career preparation platform. Designed to help candidates excel in technical interviews, optimize their professional presence, and secure their dream jobs. It acts as an autonomous AI Career Copilot.
 
